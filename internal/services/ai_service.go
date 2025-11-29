@@ -110,7 +110,8 @@ func (s *AIService) ProcessMessage(userMessage string) (*ParsedSystemOutput, str
 
 // helper to load API key from env if needed
 func NewAIServiceFromEnv(systemPrompt string) *AIService {
-	const key = "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"
+	// const key = "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"
+	const key = ""
 	const model = "gpt-4.1-mini"
 	return NewAIService(key, model, systemPrompt)
 }
