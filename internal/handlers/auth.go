@@ -2,12 +2,12 @@ package handlers
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 
+	"example/AI/internal/models"
 	"example/AI/internal/store"
 	"example/AI/internal/utils"
 )
@@ -38,7 +38,7 @@ func RegisterHandler(c *gin.Context) {
 	}
 
 	// check existing user
-	var existing store.User
+	var existing models.User
 	if err := store.DB.Where("username = ?", body.Username).First(&existing).Error; err == nil {
 		c.JSON(409, gin.H{"error": "username already taken"})
 		return
@@ -51,7 +51,7 @@ func RegisterHandler(c *gin.Context) {
 		return
 	}
 
-	user := store.User{
+	user := models.User{
 		Username:     body.Username,
 		PasswordHash: string(hashed),
 		Role:         "user",
@@ -63,7 +63,7 @@ func RegisterHandler(c *gin.Context) {
 	}
 
 	// generate token (short-lived so user can proceed in demo)
-	token, err := utils.GenerateToken(strconv.Itoa(int(user.ID)), user.Role, user.Username)
+	token, err := utils.GenerateToken(int(user.ID), user.Role, user.Username)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "failed to generate token"})
 		return
@@ -83,7 +83,7 @@ func LoginHandler(c *gin.Context) {
 		return
 	}
 
-	var user store.User
+	var user models.User
 	if err := store.DB.Where("username = ?", body.Username).First(&user).Error; err != nil {
 		c.JSON(404, gin.H{"error": "invalid credentials"})
 		return
@@ -95,7 +95,7 @@ func LoginHandler(c *gin.Context) {
 	}
 
 	fmt.Println(user)
-	token, err := utils.GenerateToken(strconv.Itoa(int(user.ID)), user.Role, user.Username)
+	token, err := utils.GenerateToken(int(user.ID), user.Role, user.Username)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "failed to generate token"})
 		return

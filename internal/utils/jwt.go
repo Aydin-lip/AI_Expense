@@ -10,7 +10,7 @@ import (
 )
 
 type Claims struct {
-	UserID   string `json:"user_id"`
+	UserID   int    `json:"user_id"`
 	Username string `json:"username"`
 	Role     string `json:"role"`
 	jwt.RegisteredClaims
@@ -18,7 +18,7 @@ type Claims struct {
 
 var jwtKey = []byte(os.Getenv("Aydin_TesT"))
 
-func GenerateToken(userID, role, username string) (string, error) {
+func GenerateToken(userID int, role, username string) (string, error) {
 	fmt.Println(userID, role, username)
 	claims := &Claims{
 		UserID:   userID,

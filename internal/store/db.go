@@ -6,6 +6,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
+
+	"example/AI/internal/models"
 )
 
 var DB *gorm.DB
@@ -35,18 +37,18 @@ func Connect(dsn, dbName string) error {
 	}
 
 	// automigrate
-	if err := db.AutoMigrate(&User{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Purchase{}); err != nil {
 		return fmt.Errorf("auto migrate failed: %w", err)
 	}
 
 	DB = db
 
 	// Seed admin user if not exists
-	var admin User
+	var admin models.User
 	if err := DB.Where("username = ?", "admin").First(&admin).Error; err != nil {
 		// not found -> create
 		hashed, _ := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.DefaultCost)
-		admin = User{
+		admin = models.User{
 			Username:     "admin",
 			PasswordHash: string(hashed),
 			Role:         "admin",

@@ -9,6 +9,7 @@ import (
 
 	"example/AI/internal/handlers"
 	"example/AI/internal/middleware"
+	"example/AI/internal/services"
 	"example/AI/internal/store"
 )
 
@@ -50,6 +51,57 @@ func main() {
 	{
 		api.GET("/me", handlers.MeHandler)
 	}
+
+	// Your ONLY reply must be inside:
+	// <system_output>
+	// { ...json... }
+	// </system_output>
+	prompt := `
+You act as a command classifier AND a structured data extractor AND an AI assistant.
+
+You MUST return JSON with ALL FIELDS FILLED — no empty, no missing fields, no null.
+
+JSON STRUCTURE (MANDATORY):
+
+{
+  "action": "add | query | analyze",
+  "data": {
+    "title": "",
+    "amount": 0,
+    "currency": "",
+    "category": "",
+    "subcategory": "",
+    "vendor": "",
+    "necessity": "",
+    "emotional_tone": "",
+    "reason_guess": "",
+    "confidence": 0,
+    "purchase_time": "YYYY-MM-DD"
+  },
+  "filters": {},
+  "assistant_reply": ""
+}
+
+RULES:
+- If user describes a purchase → action="add" AND fill all "data" fields.
+- Infer missing info logically (even if user didn't say it).
+- Dates: convert “today / yesterday / last week” into exact date.
+- Money: convert words into exact number.
+- emotional_tone: infer emotion (happy, stressed, neutral, etc.)
+- necessity: must be "low", "medium", or "high".
+- confidence: number 0–1 estimating certainty.
+- assistant_reply: a short friendly natural language response the assistant would say after saving data.
+- No natural text outside assistant_reply.
+- Never omit or leave any field empty.
+`
+
+	aiService := services.NewAIServiceFromEnv(prompt) // systemPrompt = همان سیستم پرامپت
+	purchaseRepo := store.NewPurchaseRepo(store.DB)
+	purchaseSvc := services.NewPurchaseService(purchaseRepo)
+
+	aiHandler := handlers.NewAiHandler(aiService, purchaseSvc, store.DB) // یا مستقیم db
+
+	r.POST("/ai/message", middleware.AuthRequired(), aiHandler.HandleMessage())
 
 	log.Println("server running on :8080")
 	if err := r.Run(":8080"); err != nil {
