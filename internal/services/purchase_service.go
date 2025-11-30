@@ -18,7 +18,7 @@ type PurchaseService struct {
 }
 
 func NewPurchaseService(repo *store.PurchaseRepo) *PurchaseService {
-	return &PurchaseService{Repo: repo}
+	return &PurchaseService{Repo: repo, DB: repo.DB}
 }
 
 func toFloat64(v interface{}) (float64, error) {
@@ -128,4 +128,78 @@ func (s *PurchaseService) CreateFromAIData(userID int, aiData map[string]interfa
 		return nil, err
 	}
 	return p, nil
+}
+
+func (s *PurchaseService) Query(filter models.PurchaseFilter) ([]models.Purchase, error) {
+	if s.DB == nil {
+		return nil, errors.New("database is not initialized")
+	}
+
+	db := s.DB.Model(&models.Purchase{})
+
+	// user_ids
+	if len(filter.UserIDs) > 0 {
+		db = db.Where("user_id IN ?", filter.UserIDs)
+	}
+
+	// categories
+	if len(filter.Categories) > 0 {
+		db = db.Where("category IN ?", filter.Categories)
+	}
+
+	// date range
+	if filter.FromDate != nil {
+		db = db.Where("purchase_time >= ?", *filter.FromDate)
+	}
+	if filter.ToDate != nil {
+		db = db.Where("purchase_time <= ?", *filter.ToDate)
+	}
+
+	// amount range
+	if filter.MinAmount != nil {
+		db = db.Where("amount >= ?", *filter.MinAmount)
+	}
+	if filter.MaxAmount != nil {
+		db = db.Where("amount <= ?", *filter.MaxAmount)
+	}
+
+	var res []models.Purchase
+	if err := db.Order("purchase_time desc").Find(&res).Error; err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+func (s *PurchaseService) SumAmount(filter models.PurchaseFilter) (float64, error) {
+	db := s.DB.Model(&models.Purchase{})
+	// same filter chain as Query...
+	var total float64
+	if err := db.Select("SUM(amount)").Scan(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+func (s *PurchaseService) TopCategory(filter models.PurchaseFilter) (string, float64, error) {
+	db := s.DB.Model(&models.Purchase{})
+	// filter chain
+
+	type Row struct {
+		Category string
+		Total    float64
+	}
+	var rows []Row
+
+	db.Select("category, SUM(amount) as total").
+		Group("category").
+		Order("total DESC").
+		Limit(1).
+		Scan(&rows)
+
+	if len(rows) == 0 {
+		return "", 0, nil
+	}
+
+	return rows[0].Category, rows[0].Total, nil
 }

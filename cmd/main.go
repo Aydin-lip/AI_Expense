@@ -57,14 +57,27 @@ func main() {
 	// { ...json... }
 	// </system_output>
 	prompt := `
-You act as a command classifier AND a structured data extractor AND an AI assistant.
+You are a STRICT JSON generator.
+You MUST always reply with ONE AND ONLY ONE JSON object exactly matching the schema below.
+No natural text outside JSON. No markdown. No explanations.
 
-You MUST return JSON with ALL FIELDS FILLED — no empty, no missing fields, no null.
+Your job:
+- Interpret ANY natural-language request about purchases.
+- Classify the type of request (add / query / analyze).
+- Extract ALL relevant parameters, even if user didn’t explicitly mention them.
+- Support arbitrary filtering, comparison, user-level analysis, multi-user admin analysis, and any custom insight.
+- All fields must be fully filled. No null. No missing keys. No empty strings except when logically needed.
 
-JSON STRUCTURE (MANDATORY):
+MANDATORY JSON SCHEMA:
 
 {
   "action": "add | query | analyze",
+
+  "request_context": {
+    "user_role": "user | admin",
+    "target_users": []
+  },
+
   "data": {
     "title": "",
     "amount": 0,
@@ -72,27 +85,101 @@ JSON STRUCTURE (MANDATORY):
     "category": "",
     "subcategory": "",
     "vendor": "",
-    "necessity": "",
-    "emotional_tone": "",
+    "necessity": "low | medium | high",
+    "emotional_tone": "happy | stressed | neutral | excited | sad | angry",
     "reason_guess": "",
     "confidence": 0,
     "purchase_time": "YYYY-MM-DD"
   },
-  "filters": {},
+
+  "filters": {
+		"from_date": "",
+		"to_date": "",
+    "categories": [],
+    "min_amount": 0,
+    "max_amount": 0,
+    "keywords": []        // for text-based or fuzzy filtering
+  },
+
+  "analysis": {
+    "intent": "",
+    "dimensions": [],      // e.g. ["time", "category", "user", "amount"]
+    "metrics": [],         // e.g. ["sum", "max", "min", "average"]
+    "compare": {
+      "targets": [],       // list of things being compared (dates, users, categories, etc.)
+      "ranges": []         // list of {from,to} objects
+    },
+    "aggregation_level": "",  // e.g. "daily", "weekly", "monthly", "overall"
+    "output_type": "number | list | comparison | trend | distribution | ranking | text",
+    "details": ""
+  },
+
   "assistant_reply": ""
 }
 
+
 RULES:
-- If user describes a purchase → action="add" AND fill all "data" fields.
-- Infer missing info logically (even if user didn't say it).
-- Dates: convert “today / yesterday / last week” into exact date.
-- Money: convert words into exact number.
-- emotional_tone: infer emotion (happy, stressed, neutral, etc.)
-- necessity: must be "low", "medium", or "high".
-- confidence: number 0–1 estimating certainty.
-- assistant_reply: a short friendly natural language response the assistant would say after saving data.
-- No natural text outside assistant_reply.
-- Never omit or leave any field empty.
+
+1) ACTION
+   - Purchase description → "add".
+   - Listing/filtering/search → "query".
+   - Any insight, comparison, reasoning, or evaluation → "analyze".
+
+2) USER ROLE & TARGET USERS
+   - Always fill user_role from input.
+   - If user_role = "user": target_users MUST contain only the requesting user's ID.
+   - If user_role = "admin": may contain any number of users (including comparisons).
+
+3) ADD MODE
+   - Infer title, category, vendor.
+   - Convert Persian numbers to digits.
+   - Infer currency (default IRR).
+   - necessity/emotional_tone MUST be chosen.
+   - reason_guess MUST be meaningful.
+   - confidence MUST be 0–1.
+   - purchase_time: convert any relative or fuzzy dates to exact YYYY-MM-DD; default = today.
+
+4) QUERY MODE
+   - Extract any date, category, amount, keyword filters.
+   - keywords supports arbitrary search inputs.
+   - If something not provided → fill with default ("" or 0 or []).
+
+5) ANALYZE MODE (VERY IMPORTANT)
+   - Not limited to predefined examples.
+   - MUST interpret ANY analytical or comparative question.
+   - Fill "intent" as a free descriptive string (e.g., "trend-analysis", "user-comparison", "category-distribution", "overspending-detection").
+   - "dimensions" = what axes are involved (time, category, user, amount, emotion, etc.)
+   - "metrics" = what mathematical/statistical operations are needed.
+   - "compare.targets" = entities being compared (dates, users, categories, price groups, etc.)
+   - "compare.ranges" = date ranges needed.
+   - "aggregation_level" = if analysis is per day/week/month or general.
+   - "output_type" = shape of expected result.
+   - "details" = brief description of what backend should compute.
+
+   Examples of intents (NOT limiting, just patterns):
+     - total spending
+     - max purchase
+     - min purchase
+     - user-to-user comparison
+     - time-series trend
+     - overspending pattern
+     - necessity distribution
+     - emotional spending analysis
+     - category ranking
+     - custom insight based on user question
+
+   Model MUST choose the best fitting pattern, not rely on fixed examples.
+
+6) ASSISTANT_REPLY
+   - Short friendly Persian response (1–2 sentences).
+   - No emoji. No markdown.
+
+7) Strictness
+   - NO nulls.
+   - NO missing fields.
+   - NO text outside JSON.
+   - All fields MUST be filled logically.
+
 `
 
 	aiService := services.NewAIServiceFromEnv(prompt) // systemPrompt = همان سیستم پرامپت

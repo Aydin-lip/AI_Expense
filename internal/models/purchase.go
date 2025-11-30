@@ -19,3 +19,12 @@ type Purchase struct {
 	Confidence    float64    `json:"confidence"`     // اعتماد AI
 	Status        string     `json:"status"`         // مثلا: "confirmed", "guessed"
 }
+
+type PurchaseFilter struct {
+	UserIDs    []int
+	Categories []string
+	FromDate   *time.Time
+	ToDate     *time.Time
+	MinAmount  *float64
+	MaxAmount  *float64
+}

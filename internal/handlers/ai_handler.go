@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
 	"example/AI/internal/models"
 	"example/AI/internal/services"
+	"example/AI/internal/utils"
 
 	"github.com/gin-gonic/gin"
 
@@ -36,6 +38,8 @@ func (h *AiHandler) HandleMessage() gin.HandlerFunc {
 
 		// get user from context (middleware set)
 		uidVal, exists := c.Get("userID")
+		username, exists := c.Get("username")
+		role, exists := c.Get("role")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found in context"})
 			return
@@ -43,7 +47,7 @@ func (h *AiHandler) HandleMessage() gin.HandlerFunc {
 		userID := uidVal.(int)
 
 		// send to AI
-		parsed, assistantText, err := h.AI.ProcessMessage(body.Message)
+		parsed, assistantText, err := h.AI.ProcessMessage(body.Message, userID, username.(string), role.(string))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "raw_ai": assistantText})
 			return
@@ -89,19 +93,54 @@ func (h *AiHandler) HandleMessage() gin.HandlerFunc {
 			return
 
 		case "get_purchases", "query":
-			// convert parsed.Filters => PurchaseFilter (we didn't define full mapping here)
-			// For MVP: if filters contain from/to and maybe categories, map them
-			// ... implement mapping util ConvertAIFiltersToPurchaseFilter(...)
-			c.JSON(http.StatusOK, gin.H{
-				"message": assistantText,
-				"data":    parsed.Filters,
+			fmt.Println(parsed)
+			pf := utils.ConvertAIFiltersToPurchaseFilter(parsed.Filters, parsed.RequestContext)
+			fmt.Println("=================")
+			fmt.Println("filter : ", pf)
+			fmt.Println("=================")
+			items, err := h.Purchase.Query(pf)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			c.JSON(200, gin.H{
+				"message":   parsed.AssistantReply,
+				"purchases": items,
+				"total":     len(items),
 			})
 			return
 
 		case "analyze":
+			// parsed.Filters -> convert to PurchaseFilter
+			pf := utils.ConvertAIFiltersToPurchaseFilter(parsed.Filters, parsed.RequestContext)
+
+			// compute server-side analytics
+			total, _ := h.Purchase.SumAmount(pf)
+			cat, catTotal, _ := h.Purchase.TopCategory(pf)
+			count, _ := h.Purchase.CountPurchases(pf) // اگر تابع Count نداری، بساز: SELECT COUNT(*)
+
+			analysisPayload := map[string]interface{}{
+				"total_amount":       total,
+				"top_category":       cat,
+				"top_category_total": catTotal,
+				"purchase_count":     count,
+				"filters":            parsed.Filters,
+			}
+
+			// generate friendly natural summary via AI
+			natural, raw, err := h.AI.GenerateNaturalAnalysis(analysisPayload)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": err.Error(),
+					"raw":   raw,
+				})
+				return
+			}
+
 			c.JSON(http.StatusOK, gin.H{
-				"message":  assistantText,
-				"analysis": parsed.Data,
+				"message":  natural,         // natural Persian summary
+				"analysis": analysisPayload, // raw numbers
 			})
 			return
 
